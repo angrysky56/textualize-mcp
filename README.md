@@ -1,6 +1,6 @@
 # Textualize-MCP Server
 
-A Model Context Protocol (MCP) server that provides a library of useful Textual terminal applications and sophisticated development environment orchestration using multiplex.
+A Model Context Protocol (MCP) server that provides a library of useful Textual terminal applications and sophisticated development environment orchestration using [textualize/textual](https://github.com/Textualize/textual) and [multiplex](https://github.com/sebastien/multiplex)
 
 ## Features
 
@@ -89,7 +89,7 @@ AI: "Create a custom workflow with process dependencies"
 → Define complex multi-step processes:
 [
   "DEMO#green=echo 'Starting custom workflow demo'",
-  "STEP1#blue+1=echo 'Step 1: Processing...'", 
+  "STEP1#blue+1=echo 'Step 1: Processing...'",
   "STEP2#yellow+STEP1=echo 'Step 2: Finalizing...'",
   "DONE+STEP2|end=echo '✅ Custom workflow completed!'"
 ]
@@ -226,7 +226,7 @@ AI: "Let me launch a full development environment"
 → Automatic dependency management and timing
 → Single command shuts down entire environment
 
-🧪 Testing Pipeline Automation  
+🧪 Testing Pipeline Automation
 AI: "Run the complete testing pipeline"
 → Executes linting, type checking, tests, and coverage in order
 → Each step waits for previous to complete
@@ -366,7 +366,7 @@ The multiplex integration uses a powerful syntax for coordinating processes:
 - **Colors**: `API#green=command` (color-codes output for visual distinction)
 - **Time Delays**: `+5=command` (wait 5 seconds before starting)
 - **Process Dependencies**: `+API=command` (wait for API process to complete)
-- **Actions**: 
+- **Actions**:
   - `|silent` - suppress all output
   - `|end` - terminate all processes when this one ends
   - `|noout` - suppress stdout only
