@@ -1,0 +1,449 @@
+"""
+Enhanced Scientific Calculator - Compatibility Optimized Version
+
+This module provides a comprehensive calculator implementation optimized for
+the current Textual framework API, using available container components.
+
+Features:
+- Scientific functions (trigonometric, logarithmic, exponential)  
+- Memory operations (M+, M-, MR, MC)
+- Expression history and evaluation
+- Mathematical constants (π, e, etc.)
+- Multiple operational modes via button toggling
+"""
+
+import math
+import cmath
+import statistics
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from typing import Any, Dict, List, Optional, Union
+from enum import Enum
+
+from textual import events, on
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical, Grid
+from textual.css.query import NoMatches
+from textual.reactive import var
+from textual.widgets import (
+    Button, Digits, Footer, Header, Static, ListView, ListItem, 
+    Input, Select, Label, Switch
+)
+
+from textualize_mcp.core.base import AppConfig, AppStatus, BaseTextualApp, register_app
+
+
+class CalculatorMode(Enum):
+    """Calculator operational modes."""
+    BASIC = "basic"
+    SCIENTIFIC = "scientific" 
+    PROGRAMMER = "programmer"
+
+
+class MemoryOperation(Enum):
+    """Memory operation types."""
+    STORE = "store"
+    RECALL = "recall"
+    ADD = "add"
+    SUBTRACT = "subtract"
+    CLEAR = "clear"
+
+
+@register_app
+class EnhancedCalculatorApp(BaseTextualApp):
+    """Enhanced scientific calculator with advanced mathematical operations."""
+
+    APP_CONFIG = AppConfig(
+        name="enhanced_calculator",
+        description="Advanced scientific calculator with multiple operational modes",
+        version="2.0.0",
+        author="Textualize-MCP Enhanced",
+        tags=["calculator", "scientific", "math", "advanced", "utility"],
+        requires_web=False,
+        requires_sudo=False
+    )
+
+    TITLE = "Enhanced Scientific Calculator"
+
+    CSS = """
+    Screen {
+        overflow: auto;
+    }
+
+    #main-container {
+        layout: vertical;
+        height: 100%;
+    }
+
+    #display-section {
+        height: 8;
+        margin: 1 2;
+    }
+
+    #display {
+        height: 4;
+        content-align: right middle;
+        background: $panel;
+        color: $text;
+        border: solid $primary;
+        padding: 0 1;
+        text-style: bold;
+    }
+
+    #expression-display {
+        height: 2;
+        content-align: right middle;
+        background: $surface;
+        color: $text-muted;
+        border: solid $secondary;
+        padding: 0 1;
+        text-style: italic;
+    }
+
+    #mode-selector {
+        height: 4;
+        background: $panel;
+        border: solid $accent;
+        margin: 0 2 1 2;
+        padding: 1;
+    }
+
+    #calculator-area {
+        height: 1fr;
+        margin: 0 2 1 2;
+    }
+
+    .calc-grid {
+        layout: grid;
+        grid-size: 5;
+        grid-gutter: 1;
+        grid-columns: 1fr;
+        height: 100%;
+    }
+
+    .calc-button {
+        width: 100%;
+        height: 100%;
+        min-height: 3;
+    }
+
+    .number-btn {
+        background: $primary;
+        color: $text;
+        border: solid $primary;
+    }
+
+    .number-btn:hover {
+        background: $primary-lighten-1;
+        text-style: bold reverse;
+    }
+
+    .operator-btn {
+        background: $warning;
+        color: $text;
+        border: solid $warning;
+        text-style: bold;
+    }
+
+    .operator-btn:hover {
+        background: $warning-lighten-1;
+        text-style: bold reverse;
+    }
+
+    .function-btn {
+        background: $secondary;
+        color: $text;
+        border: solid $secondary;
+    }
+
+    .function-btn:hover {
+        background: $secondary-lighten-1;
+        text-style: bold reverse;
+    }
+
+    .memory-btn {
+        background: $success;
+        color: $text;
+        border: solid $success;
+        text-style: bold;
+    }
+
+    .memory-btn:hover {
+        background: $success-lighten-1;
+        text-style: bold reverse;
+    }
+
+    .special-btn {
+        background: $error;
+        color: $text;
+        border: solid $error;
+        text-style: bold;
+    }
+
+    .special-btn:hover {
+        background: $error-lighten-1;
+        text-style: bold reverse;
+    }
+
+    .mode-btn {
+        background: $boost;
+        color: $text;
+        border: solid $boost;
+        margin: 0 1 0 0;
+        min-width: 12;
+    }
+
+    .mode-btn.active {
+        background: $accent;
+        text-style: bold reverse;
+    }
+
+    #history-panel {
+        dock: right;
+        width: 30;
+        background: $surface;
+        border-left: solid $accent;
+        display: none;
+    }
+
+    #memory-panel {
+        height: 6;
+        background: $panel;
+        border: solid $secondary;
+        margin: 1;
+        padding: 1;
+    }
+
+    .memory-value {
+        text-align: right;
+        background: $surface;
+        padding: 0 1;
+        margin: 0 0 1 0;
+        border: solid $accent;
+        text-style: bold;
+    }
+
+    #status-bar {
+        dock: bottom;
+        height: 3;
+        background: $surface;
+        layout: horizontal;
+        padding: 1;
+    }
+    """
+
+    # Reactive attributes
+    display_value = var("0")
+    expression = var("")
+    current_mode = var(CalculatorMode.BASIC)
+    memory_values: Dict[str, Decimal] = var(factory=dict)
+    history: List[str] = var(factory=list)
+    show_history = var(False)
+    
+    # Internal state
+    left_operand: Optional[Decimal] = None
+    right_operand: Optional[Decimal] = None
+    operator: Optional[str] = None
+    pending_operation: bool = False
+    last_result: Optional[Decimal] = None
+
+    # Mathematical constants
+    CONSTANTS = {
+        "π": Decimal(str(math.pi)),
+        "e": Decimal(str(math.e)),
+        "φ": Decimal("1.618033988749894848204586834365638117720"),  # Golden ratio
+        "γ": Decimal("0.5772156649015328606065120900824024310421"),  # Euler-Mascheroni
+    }
+
+    def watch_display_value(self, value: str) -> None:
+        """Update the main display when display_value changes."""
+        self.query_one("#display", Digits).update(value)
+
+    def watch_expression(self, value: str) -> None:
+        """Update the expression display when expression changes."""
+        try:
+            expr_widget = self.query_one("#expression-display", Static)
+            expr_widget.update(value)
+        except NoMatches:
+            pass
+
+    def watch_show_history(self, show: bool) -> None:
+        """Toggle history panel visibility."""
+        try:
+            history_panel = self.query_one("#history-panel")
+            history_panel.display = show
+        except NoMatches:
+            pass
+
+    def watch_current_mode(self, mode: CalculatorMode) -> None:
+        """Update calculator interface based on mode change."""
+        self._update_mode_buttons()
+        self._refresh_calculator_grid()
+
+    def compose(self) -> ComposeResult:
+        """Compose the enhanced calculator interface."""
+        yield Header()
+        
+        with Container(id="main-container"):
+            # Display section
+            with Container(id="display-section"):
+                yield Static("", id="expression-display")
+                yield Digits(id="display")
+            
+            # Memory panel
+            with Container(id="memory-panel"):
+                yield Label("Memory:")
+                with Horizontal():
+                    yield Static("M1: 0", id="memory-m1", classes="memory-value")
+                    yield Static("M2: 0", id="memory-m2", classes="memory-value")
+            
+            # Mode selector
+            with Container(id="mode-selector"):
+                yield Label("Calculator Mode:")
+                with Horizontal():
+                    yield Button("Basic", id="mode-basic", classes="mode-btn active")
+                    yield Button("Scientific", id="mode-scientific", classes="mode-btn")
+                    yield Button("Programmer", id="mode-programmer", classes="mode-btn")
+            
+            # Calculator area
+            with Container(id="calculator-area"):
+                yield self._create_calculator_grid()
+        
+        # History panel (initially hidden)
+        with Container(id="history-panel"):
+            yield Label("History")
+            yield ListView(id="history-list")
+        
+        # Status bar
+        with Container(id="status-bar"):
+            yield Static("Mode: Basic", id="mode-status")
+            yield Static("", id="memory-status")
+            yield Button("History", id="toggle-history", classes="function-btn")
+        
+        yield Footer()
+
+    def _create_calculator_grid(self) -> Container:
+        """Create the calculator button grid based on current mode."""
+        if self.current_mode == CalculatorMode.BASIC:
+            return self._create_basic_calculator()
+        elif self.current_mode == CalculatorMode.SCIENTIFIC:
+            return self._create_scientific_calculator()
+        elif self.current_mode == CalculatorMode.PROGRAMMER:
+            return self._create_programmer_calculator()
+        else:
+            return self._create_basic_calculator()
+
+    def _create_basic_calculator(self) -> Container:
+        """Create the basic calculator layout."""
+        with Container(classes="calc-grid") as container:
+            # Row 1: Memory and clear operations
+            yield Button("MC", id="memory-clear", classes="memory-btn")
+            yield Button("MR", id="memory-recall", classes="memory-btn")
+            yield Button("M+", id="memory-add", classes="memory-btn")
+            yield Button("M-", id="memory-subtract", classes="memory-btn")
+            yield Button("AC", id="all-clear", classes="special-btn")
+            
+            # Row 2: Advanced operations
+            yield Button("√", id="sqrt", classes="function-btn")
+            yield Button("x²", id="square", classes="function-btn")
+            yield Button("1/x", id="reciprocal", classes="function-btn")
+            yield Button("%", id="percent", classes="function-btn")
+            yield Button("÷", id="divide", classes="operator-btn")
+            
+            # Row 3: Numbers and operations
+            yield Button("7", id="num-7", classes="number-btn")
+            yield Button("8", id="num-8", classes="number-btn")
+            yield Button("9", id="num-9", classes="number-btn")
+            yield Button("×", id="multiply", classes="operator-btn")
+            yield Button("C", id="clear", classes="special-btn")
+            
+            # Row 4
+            yield Button("4", id="num-4", classes="number-btn")
+            yield Button("5", id="num-5", classes="number-btn")
+            yield Button("6", id="num-6", classes="number-btn")
+            yield Button("-", id="subtract", classes="operator-btn")
+            yield Button("+/-", id="negate", classes="function-btn")
+            
+            # Row 5
+            yield Button("1", id="num-1", classes="number-btn")
+            yield Button("2", id="num-2", classes="number-btn")
+            yield Button("3", id="num-3", classes="number-btn")
+            yield Button("+", id="add", classes="operator-btn")
+            yield Button("=", id="equals", classes="operator-btn")
+            
+            # Row 6
+            yield Button("0", id="num-0", classes="number-btn")
+            yield Button(".", id="decimal", classes="number-btn")
+            yield Button("π", id="const-pi", classes="function-btn")
+            yield Button("e", id="const-e", classes="function-btn")
+            yield Button("Ans", id="last-answer", classes="function-btn")
+            
+        return container
+
+    def _create_scientific_calculator(self) -> Container:
+        """Create the scientific calculator layout."""
+        with Container(classes="calc-grid") as container:
+            # Scientific functions
+            yield Button("sin", id="sin", classes="function-btn")
+            yield Button("cos", id="cos", classes="function-btn")
+            yield Button("tan", id="tan", classes="function-btn")
+            yield Button("asin", id="asin", classes="function-btn")
+            yield Button("acos", id="acos", classes="function-btn")
+            
+            yield Button("ln", id="ln", classes="function-btn")
+            yield Button("log", id="log", classes="function-btn")
+            yield Button("e^x", id="exp", classes="function-btn")
+            yield Button("10^x", id="pow10", classes="function-btn")
+            yield Button("x^y", id="power", classes="function-btn")
+            
+            yield Button("sinh", id="sinh", classes="function-btn")
+            yield Button("cosh", id="cosh", classes="function-btn")
+            yield Button("tanh", id="tanh", classes="function-btn")
+            yield Button("x!", id="factorial", classes="function-btn")
+            yield Button("nCr", id="combination", classes="function-btn")
+            
+            yield Button("(", id="open-paren", classes="function-btn")
+            yield Button(")", id="close-paren", classes="function-btn")
+            yield Button("Deg", id="deg-mode", classes="function-btn")
+            yield Button("Rad", id="rad-mode", classes="function-btn")
+            yield Button("Clear", id="sci-clear", classes="special-btn")
+            
+            # Include basic calculator buttons
+            yield Button("7", id="num-7", classes="number-btn")
+            yield Button("8", id="num-8", classes="number-btn")
+            yield Button("9", id="num-9", classes="number-btn")
+            yield Button("÷", id="divide", classes="operator-btn")
+            yield Button("C", id="clear", classes="special-btn")
+            
+        return container
+
+    def _create_programmer_calculator(self) -> Container:
+        """Create the programmer calculator layout."""
+        with Container(classes="calc-grid") as container:
+            # Number system conversions
+            yield Button("HEX", id="hex-mode", classes="function-btn")
+            yield Button("DEC", id="dec-mode", classes="function-btn")
+            yield Button("OCT", id="oct-mode", classes="function-btn")
+            yield Button("BIN", id="bin-mode", classes="function-btn")
+            yield Button("<<", id="left-shift", classes="operator-btn")
+            
+            yield Button(">>", id="right-shift", classes="operator-btn")
+            yield Button("AND", id="bitwise-and", classes="operator-btn")
+            yield Button("OR", id="bitwise-or", classes="operator-btn")
+            yield Button("XOR", id="bitwise-xor", classes="operator-btn")
+            yield Button("NOT", id="bitwise-not", classes="operator-btn")
+            
+            # Hex digits
+            yield Button("A", id="hex-a", classes="number-btn")
+            yield Button("B", id="hex-b", classes="number-btn")
+            yield Button("C", id="hex-c", classes="number-btn")
+            yield Button("D", id="hex-d", classes="number-btn")
+            yield Button("E", id="hex-e", classes="number-btn")
+            
+            yield Button("F", id="hex-f", classes="number-btn")
+            yield Button("Word", id="word-size", classes="function-btn")
+            yield Button("Byte", id="byte-size", classes="function-btn")
+            yield Button("DWord", id="dword-size", classes="function-btn")
+            yield Button("Clear", id="prog-clear", classes="special-btn")
+            
+        return container

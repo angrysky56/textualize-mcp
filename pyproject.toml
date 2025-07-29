@@ -1,0 +1,102 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "textualize-mcp"
+version = "0.1.0"
+description = "MCP server for Textual terminal applications"
+authors = [
+    {name = "Claude & Ty", email = "claude@anthropic.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Monitoring",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "textual>=5.0.1",
+    "textual-dev>=1.7.0",
+    "mcp[cli]>=1.2.0",
+    "click>=8.2.1",
+    "rich>=14.1.0",
+    "psutil>=7.0.0",
+    "gitpython>=3.1.45",
+    "httpx>=0.28.1",
+    "pydantic>=2.11.7",
+    "watchfiles>=1.1.0",
+    "multiplex-sh>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "black>=25.1.0",
+    "isort>=6.0.1",
+    "mypy>=1.17.0",
+    "ruff>=0.12.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/angrysky56/textualize-mcp"
+Repository = "https://github.com/angrysky56/textualize-mcp"
+Documentation = "https://github.com/angrysky56/textualize-mcp#readme"
+Issues = "https://github.com/angrysky56/textualize-mcp/issues"
+
+[project.scripts]
+textualize-mcp = "textualize_mcp.server.mcp_server:main"
+tui-file-browser = "textualize_mcp.apps.file_browser:main"
+tui-process-monitor = "textualize_mcp.apps.process_monitor:main"
+tui-api-tester = "textualize_mcp.apps.api_tester:main"
+
+[tool.setuptools.packages.find]
+include = ["textualize_mcp*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"

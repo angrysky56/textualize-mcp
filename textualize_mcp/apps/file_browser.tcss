@@ -1,0 +1,173 @@
+/* File Browser Pro Styles */
+
+#main-container {
+    layout: vertical;
+    height: 1fr;
+}
+
+#browser-panes {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#tree-pane {
+    width: 30%;
+    border-right: solid $accent;
+    padding: 1;
+}
+
+#content-pane {
+    width: 70%;
+    padding: 1;
+}
+
+#toolbar {
+    layout: horizontal;
+    height: 3;
+    align: center middle;
+}
+
+#search-input {
+    width: 1fr;
+    margin-right: 1;
+}
+
+#refresh-btn, #new-folder-btn {
+    width: auto;
+    margin-left: 1;
+}
+
+#main-content {
+    layout: horizontal;
+    height: 1fr;
+    margin-top: 1;
+}
+
+#file-list-container {
+    width: 50%;
+    border-right: solid $accent;
+    padding-right: 1;
+}
+
+#preview-pane {
+    width: 50%;
+    padding-left: 1;
+}
+
+#file-list {
+    height: 1fr;
+}
+
+#file-preview {
+    height: 1fr;
+    border: solid $accent;
+    margin-bottom: 1;
+}
+
+#file-info-collapsible {
+    height: auto;
+}
+
+.file-info {
+    padding: 1;
+    background: $surface-lighten-1;
+    border: solid $accent;
+}
+
+#status-container {
+    height: 3;
+    background: $surface-darken-1;
+    padding: 1;
+}
+
+.status-widget {
+    width: 1fr;
+    text-align: center;
+}
+
+.status-info {
+    color: $text;
+}
+
+.status-success {
+    color: $success;
+}
+
+.status-warning {
+    color: $warning;
+}
+
+.status-error {
+    color: $error;
+}
+
+#tree-label, #file-list-label, #preview-label {
+    height: 1;
+    background: $accent;
+    color: $text-on-accent;
+    text-align: center;
+    content-align: center middle;
+    margin-bottom: 1;
+}
+
+/* Directory tree customization */
+DirectoryTree {
+    height: 1fr;
+}
+
+/* Data table customization */
+DataTable {
+    height: 1fr;
+}
+
+DataTable > .datatable--header {
+    background: $accent;
+    color: $text-on-accent;
+}
+
+DataTable > .datatable--cursor {
+    background: $accent 50%;
+}
+
+/* File preview styling */
+.file-preview Static {
+    padding: 1;
+    height: auto;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 120) {
+    #browser-panes {
+        layout: vertical;
+    }
+    
+    #tree-pane {
+        width: 1fr;
+        height: 30%;
+        border-right: none;
+        border-bottom: solid $accent;
+    }
+    
+    #content-pane {
+        width: 1fr;
+        height: 70%;
+    }
+    
+    #main-content {
+        layout: vertical;
+    }
+    
+    #file-list-container {
+        width: 1fr;
+        height: 50%;
+        border-right: none;
+        border-bottom: solid $accent;
+    }
+    
+    #preview-pane {
+        width: 1fr;
+        height: 50%;
+        padding-left: 0;
+        padding-top: 1;
+    }
+}

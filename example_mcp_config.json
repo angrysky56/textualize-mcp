@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "textualize-mcp": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/your/textualize-mcp",
+        "run",
+        "server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "/path/to/your/textualize-mcp"
+      }
+    }
+  }
+}

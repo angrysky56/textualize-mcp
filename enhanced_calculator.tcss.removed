@@ -1,0 +1,299 @@
+/* Enhanced Scientific Calculator Styles */
+
+/* Main container styling */
+#main-container {
+    background: $surface;
+    border: solid $accent;
+    border-title-align: center;
+    border-title-style: bold;
+}
+
+/* Display section styling */
+#display-section {
+    background: $panel;
+    border: solid $primary;
+    margin: 1;
+    padding: 1;
+}
+
+#display {
+    background: $boost;
+    color: $text;
+    text-style: bold;
+    font-size: 2;
+    border: solid $success;
+    border-title: "Result";
+}
+
+#expression-display {
+    background: $surface;
+    color: $text-muted;
+    text-style: italic;
+    border: solid $warning;
+    border-title: "Expression";
+}
+
+/* Memory panel styling */
+#memory-panel {
+    background: $panel;
+    border: solid $secondary;
+    border-title: "Memory";
+    border-title-style: bold;
+}
+
+.memory-value {
+    background: $surface;
+    color: $text;
+    text-align: right;
+    padding: 0 1;
+    margin: 0 0 1 0;
+    border: solid $accent;
+    text-style: bold;
+}
+
+/* Calculator tabs styling */
+#calculator-tabs {
+    background: $surface;
+    border: solid $accent;
+}
+
+/* Grid layout for calculator buttons */
+.calc-grid {
+    background: $surface;
+    grid-gutter: 1 1;
+    margin: 1;
+    padding: 1;
+}
+
+/* Button styling by category */
+.calc-button {
+    min-height: 3;
+    min-width: 8;
+    text-style: bold;
+    border: solid;
+}
+
+.number-btn {
+    background: $primary;
+    color: $text;
+    border: solid $primary;
+}
+
+.number-btn:hover {
+    background: $primary-lighten-1;
+    text-style: bold reverse;
+}
+
+.number-btn:focus {
+    background: $primary-darken-1;
+    border: solid $accent;
+}
+
+.operator-btn {
+    background: $warning;
+    color: $text;
+    border: solid $warning;
+    text-style: bold;
+}
+
+.operator-btn:hover {
+    background: $warning-lighten-1;
+    text-style: bold reverse;
+}
+
+.operator-btn:focus {
+    background: $warning-darken-1;
+    border: solid $accent;
+}
+
+.function-btn {
+    background: $secondary;
+    color: $text;
+    border: solid $secondary;
+}
+
+.function-btn:hover {
+    background: $secondary-lighten-1;
+    text-style: bold reverse;
+}
+
+.function-btn:focus {
+    background: $secondary-darken-1;
+    border: solid $accent;
+}
+
+.memory-btn {
+    background: $success;
+    color: $text;
+    border: solid $success;
+    text-style: bold;
+}
+
+.memory-btn:hover {
+    background: $success-lighten-1;
+    text-style: bold reverse;
+}
+
+.memory-btn:focus {
+    background: $success-darken-1;
+    border: solid $accent;
+}
+
+.special-btn {
+    background: $error;
+    color: $text;
+    border: solid $error;
+    text-style: bold;
+}
+
+.special-btn:hover {
+    background: $error-lighten-1;
+    text-style: bold reverse;
+}
+
+.special-btn:focus {
+    background: $error-darken-1;
+    border: solid $accent;
+}
+
+/* History panel styling */
+#history-panel {
+    background: $panel;
+    border-left: solid $accent;
+    border-title: "History";
+    border-title-style: bold;
+    padding: 1;
+}
+
+#history-list {
+    background: $surface;
+    border: solid $secondary;
+    height: 1fr;
+}
+
+#history-list > ListItem {
+    background: $surface;
+    color: $text;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+#history-list > ListItem:hover {
+    background: $boost;
+    text-style: bold;
+}
+
+/* Status bar styling */
+#status-bar {
+    background: $panel;
+    border-top: solid $accent;
+    align: center middle;
+}
+
+#mode-status {
+    color: $text;
+    text-style: bold;
+    background: $surface;
+    padding: 0 1;
+    margin: 0 1 0 0;
+    border: solid $primary;
+}
+
+#memory-status {
+    color: $text-muted;
+    background: $surface;
+    padding: 0 1;
+    margin: 0 1 0 0;
+    border: solid $secondary;
+}
+
+#toggle-history {
+    min-width: 10;
+}
+
+/* Tab-specific styling */
+TabPane {
+    background: $surface;
+    padding: 1;
+}
+
+TabPane:focus {
+    border: solid $accent;
+}
+
+/* Responsive design adjustments */
+@media (max-width: 80) {
+    .calc-grid {
+        grid-size: 4;
+        grid-columns: 1fr;
+    }
+    
+    .calc-button {
+        min-width: 6;
+        min-height: 2;
+    }
+}
+
+@media (max-height: 30) {
+    #display-section {
+        height: 6;
+    }
+    
+    #memory-panel {
+        height: 6;
+    }
+    
+    .calc-button {
+        min-height: 2;
+    }
+}
+
+/* Special button arrangements */
+#num-0 {
+    column-span: 2;
+}
+
+#equals {
+    row-span: 2;
+}
+
+/* Animation effects */
+.calc-button {
+    transition: background 200ms, border 200ms;
+}
+
+.calc-button:hover {
+    transition: background 100ms, border 100ms;
+}
+
+/* Error state styling */
+.error-state {
+    background: $error;
+    color: $text;
+    text-style: bold blink;
+    border: solid $error;
+}
+
+/* Scientific mode specific styling */
+#scientific-tab .calc-grid {
+    grid-size: 5;
+}
+
+#scientific-tab .function-btn {
+    font-size: 1;
+    text-style: bold;
+}
+
+/* Programmer mode specific styling */
+#programmer-tab .calc-grid {
+    grid-size: 5;
+}
+
+#programmer-tab .number-btn {
+    background: $secondary;
+}
+
+#programmer-tab .operator-btn {
+    background: $error;
+    text-style: bold;
+}
