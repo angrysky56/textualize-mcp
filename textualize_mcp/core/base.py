@@ -34,14 +34,12 @@ class AppStatus(BaseModel):
 
 class BaseTextualApp(App):
     """Base class for all Textual applications in the MCP server."""
-
-    # Application metadata
+    _is_running: bool = False
     APP_CONFIG: AppConfig
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("ctrl+c", "quit", "Quit"),
     ]
-
     async def get_app_specific_detailed_state(self) -> dict[str, Any]:
         """Get app-specific detailed state. Override in subclasses if needed."""
         return {}
@@ -57,6 +55,9 @@ class BaseTextualApp(App):
         self.output_buffer: list[str] = []  # Buffer for capturing output
         self.session_data: dict[str, Any] = {}  # Session-specific data
         self.interactive_sessions: dict[str, dict] = {}  # Active interactive sessions
+        self.process_id: int | None = None  # PID if the app is launched as a subprocess
+        self._creation_time: str = datetime.now().isoformat()  # Track when app was created (for MCP)
+        # Note: _start_time is handled by Textual's App class and should be a float from perf_counter()
 
     @classmethod
     def get_config(cls) -> AppConfig:
@@ -70,11 +71,23 @@ class BaseTextualApp(App):
 
     def get_status(self) -> AppStatus:
         """Get current application status."""
-        raise NotImplementedError("Subclasses must implement get_status()")
+        return AppStatus(
+            app_id=self.app_id or "unknown",
+            name=self.APP_CONFIG.name,
+            pid=self.process_id,
+            status="running" if self._is_running else "stopped",
+            start_time=self._creation_time,
+            error_message=None
+        )
 
     def set_app_id(self, app_id: str) -> None:
         """Set the application ID (used by MCP server)."""
         self.app_id = app_id
+
+    @property
+    def is_running(self) -> bool:
+        """Check if the application is currently running."""
+        return self._is_running
 
     def set_mcp_server(self, server) -> None:
         """Set reference to MCP server."""
@@ -383,6 +396,11 @@ class AppRegistry:
         return [app_class.get_config() for app_class in cls._apps.values()]
 
     @classmethod
+    def get_apps_dict(cls) -> dict[str, type]:
+        """Get all registered applications as a name -> class dictionary."""
+        return cls._apps.copy()
+
+    @classmethod
     def get_running_app(cls, app_id: str) -> BaseTextualApp | None:
         """Get running application instance."""
         return cls._running_apps.get(app_id)
@@ -396,9 +414,3 @@ class AppRegistry:
     def remove_running_app(cls, app_id: str) -> None:
         """Remove running application from registry."""
         cls._running_apps.pop(app_id, None)
-
-
-def register_app(app_class: type):
-    """Decorator to register an application."""
-    AppRegistry.register(app_class)
-    return app_class

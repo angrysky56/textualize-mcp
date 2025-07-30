@@ -14,7 +14,7 @@ from textual.reactive import reactive, var
 from textual.widgets import Button, Collapsible, DataTable, Footer, Header, Input, Label, ProgressBar, Select, Static
 from textual.worker import Worker
 
-from ..core.base import AppConfig, AppStatus, BaseTextualApp, StatusWidget, register_app
+from ..core.base import AppConfig, AppStatus, BaseTextualApp, StatusWidget
 
 
 class SystemInfo(Static):
@@ -170,7 +170,6 @@ class ProcessDetails(VerticalScroll):
             return f"{minutes}m"
 
 
-@register_app
 class ProcessMonitorApp(BaseTextualApp):
     """Real-time system monitoring with process management capabilities."""
 

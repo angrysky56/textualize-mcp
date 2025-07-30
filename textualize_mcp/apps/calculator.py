@@ -15,10 +15,9 @@ from textual.css.query import NoMatches
 from textual.reactive import var
 from textual.widgets import Button, Digits, Footer, Header, Tabs
 
-from textualize_mcp.core.base import AppConfig, AppStatus, BaseTextualApp, register_app
+from textualize_mcp.core.base import AppConfig, AppStatus, BaseTextualApp
 
 
-@register_app
 class CalculatorApp(BaseTextualApp):
     """Calculator with basic and scientific functionality."""
 
@@ -330,14 +329,49 @@ class CalculatorApp(BaseTextualApp):
             self.right = Decimal(self.value)
         self._do_math()
 
+    @staticmethod
+    def calculate(expression: str) -> str:
+        """Calculate a mathematical expression without launching the UI.
+
+        Args:
+            expression: Mathematical expression like "2+3*4", "sin(45)", "sqrt(16)"
+
+        Returns:
+            Result as a string, or "Error" if calculation fails
+        """
+        try:
+            import re
+            # Replace common function names with math module equivalents
+            safe_expression = expression.lower()
+
+            # Handle trig functions specially to convert degrees to radians
+            safe_expression = re.sub(r'sin\(([^)]+)\)', r'math.sin(math.radians(\1))', safe_expression)
+            safe_expression = re.sub(r'cos\(([^)]+)\)', r'math.cos(math.radians(\1))', safe_expression)
+            safe_expression = re.sub(r'tan\(([^)]+)\)', r'math.tan(math.radians(\1))', safe_expression)
+
+            # Handle other functions normally
+            safe_expression = safe_expression.replace("sqrt", "math.sqrt")
+            safe_expression = safe_expression.replace("ln", "math.log")
+            safe_expression = safe_expression.replace("log", "math.log10")
+            safe_expression = safe_expression.replace("exp", "math.exp")
+            safe_expression = safe_expression.replace("pi", "math.pi")
+            safe_expression = safe_expression.replace("e", "math.e")
+
+            # Evaluate safely
+            result = eval(safe_expression, {"__builtins__": {}, "math": math})
+            return str(result)
+
+        except Exception as e:
+            return f"Error: {str(e)}"
+
     def get_status(self) -> AppStatus:
         """Get current application status."""
         return AppStatus(
             app_id=self.app_id or "unknown",
             name=self.APP_CONFIG.name,
-            pid=None,  # TUI apps don't have separate PIDs in this implementation
-            status="running" if hasattr(self, 'is_running') and self.is_running else "stopped",
-            start_time=datetime.now().isoformat(),
+            pid=self.process_id,
+            status="running" if self._is_running else "stopped",
+            start_time=self._creation_time,
             error_message=None
         )
 

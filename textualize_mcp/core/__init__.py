@@ -1,6 +1,6 @@
 """Core utilities and base classes for Textual applications."""
 
-from .base import AppConfig, AppRegistry, AppStatus, BaseDataProvider, BaseTextualApp, StatusWidget, register_app
+from .base import AppConfig, AppRegistry, AppStatus, BaseDataProvider, BaseTextualApp, StatusWidget
 
 __all__ = [
     "BaseTextualApp",
@@ -8,6 +8,5 @@ __all__ = [
     "AppStatus",
     "AppRegistry",
     "StatusWidget",
-    "BaseDataProvider",
-    "register_app"
+    "BaseDataProvider"
 ]

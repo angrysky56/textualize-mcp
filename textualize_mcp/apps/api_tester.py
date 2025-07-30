@@ -15,7 +15,7 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive, var
 from textual.widgets import Button, Collapsible, DataTable, Footer, Header, Input, Label, ProgressBar, Select, Static, TabbedContent, TabPane, TextArea
 
-from ..core.base import AppConfig, AppStatus, BaseTextualApp, StatusWidget, register_app
+from ..core.base import AppConfig, AppStatus, BaseTextualApp, StatusWidget
 
 
 class RequestHistory(Static):
@@ -132,7 +132,6 @@ Size: {len(str(response_data.get('body', '')))} characters"""
             self.mount(Collapsible(Static(headers_text), title="Response Headers"))
 
 
-@register_app
 class APITesterApp(BaseTextualApp):
     """REST API testing and development tool."""
 

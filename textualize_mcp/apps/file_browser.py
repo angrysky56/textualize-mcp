@@ -14,7 +14,7 @@ from textual.message import Message
 from textual.reactive import reactive, var
 from textual.widgets import Button, Collapsible, DataTable, DirectoryTree, Footer, Header, Input, Label, ProgressBar, Static
 
-from ..core.base import AppConfig, AppStatus, BaseTextualApp, StatusWidget, register_app
+from ..core.base import AppConfig, AppStatus, BaseTextualApp, StatusWidget
 
 
 class FileInfo(Static):
@@ -156,7 +156,6 @@ class FilePreview(VerticalScroll):
         return f"{size:.1f} PB"
 
 
-@register_app
 class FileBrowserApp(BaseTextualApp):
     """Advanced dual-pane file manager with preview capabilities."""
 

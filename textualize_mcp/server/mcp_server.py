@@ -85,8 +85,16 @@ class AppManager:
         """Generate a unique application ID."""
         return f"app_{uuid.uuid4().hex[:8]}"
 
-    async def launch_app(self, app_name: str, args: dict[str, Any] | None = None, web_mode: bool = False, port: int = 8000) -> str:
-        """Launch a Textual application."""
+    async def launch_app(self, app_name: str, args: dict[str, Any] | None = None, web_mode: bool = False, in_process: bool = False, port: int = 8000) -> str:
+        """Launch a Textual application.
+
+        Args:
+            app_name: Name of the application to launch
+            args: Arguments to pass to the application
+            web_mode: Whether to launch in web browser mode
+            in_process: Whether to launch in same process (enables collaborative features)
+            port: Port for web mode
+        """
         app_class = AppRegistry.get_app_class(app_name)
         if not app_class:
             raise ValueError(f"Unknown application: {app_name}")
@@ -103,7 +111,10 @@ class AppManager:
             self.running_apps[app_id] = app
             AppRegistry.add_running_app(app_id, app)
 
-            if web_mode:
+            if in_process:
+                # Launch in-process for collaborative functionality
+                await self._launch_in_process_app(app_id, app)
+            elif web_mode:
                 # Launch in web mode using textual serve
                 await self._launch_web_app(app_id, app_name, app_args, port)
             else:
@@ -119,15 +130,24 @@ class AppManager:
             raise Exception(f"Failed to launch {app_name}: {e}") from e
 
     async def _launch_terminal_app(self, app_id: str, app: BaseTextualApp) -> None:
-        """Launch app in terminal mode as subprocess."""
-        # Create a script that runs the app
+        """Launch app in terminal mode as subprocess while maintaining interactive access."""
+        # Create a script that runs the SAME app instance that's stored in running_apps
+        # This allows interactive functionality to work with the actual running app
         script_content = f'''#!/usr/bin/env python3
 import sys
+import asyncio
 sys.path.insert(0, r"{Path(__file__).parent.parent.parent}")
 from textualize_mcp.apps.{app.APP_CONFIG.name} import {app.__class__.__name__}
 
 if __name__ == "__main__":
+    # Create app instance with same app_id for interactive functionality
     app = {app.__class__.__name__}()
+    app.set_app_id("{app_id}")
+
+    # Initialize output buffer for interactive functionality
+    app.output_buffer = []
+    app._log_output("App started in terminal mode")
+
     app.run()
 '''
 
@@ -137,7 +157,7 @@ if __name__ == "__main__":
         script_path = temp_apps_dir / f"temp_{app_id}.py"
         script_path.write_text(script_content)
 
-        # Launch the app in terminal
+        # Launch the app in terminal with better process tracking
         process = await asyncio.create_subprocess_exec(
             "gnome-terminal", "--", "python3", str(script_path),
             stdout=asyncio.subprocess.PIPE,
@@ -145,6 +165,108 @@ if __name__ == "__main__":
         )
 
         self.app_processes[app_id] = process
+
+        # Update the stored app instance to have the process reference
+        app.process_id = process.pid if process.pid else None
+        app._log_output(f"Terminal launched with PID: {process.pid}")
+
+        # Start monitoring the process in background
+        asyncio.create_task(self._monitor_terminal_process(app_id, process))
+
+    async def _monitor_terminal_process(self, app_id: str, process: asyncio.subprocess.Process) -> None:
+        """Monitor a terminal process and clean up when it exits."""
+        try:
+            # Wait for the process to complete
+            await process.wait()
+
+            # Process has ended, clean up
+            logger.info(f"Terminal process for app {app_id} has ended (PID: {process.pid})")
+
+            # Update app status
+            if app_id in self.running_apps:
+                app = self.running_apps[app_id]
+                if isinstance(app, BaseTextualApp):
+                    app._log_output(f"Terminal process ended, app {app_id} stopped")
+                    # Create a stopped status
+                    status = AppStatus(
+                        app_id=app_id,
+                        name=app.APP_CONFIG.name,
+                        pid=None,
+                        status="stopped",
+                        start_time=getattr(app, '_creation_time', datetime.now().isoformat()),
+                        error_message=None
+                    )
+                    self.running_apps[app_id] = status
+
+            # Clean up process reference
+            self.app_processes.pop(app_id, None)
+
+            # Clean up temp files
+            await self._cleanup_temp_files(app_id)
+
+        except Exception as e:
+            logger.error(f"Error monitoring terminal process for app {app_id}: {e}")
+
+    async def _cleanup_temp_files(self, app_id: str) -> None:
+        """Clean up temporary files for an app."""
+        try:
+            temp_apps_dir = Path(__file__).parent.parent.parent / "temp_apps"
+            temp_file_patterns = [
+                f"temp_{app_id}.py",
+                f"temp_web_{app_id}.py"
+            ]
+
+            for pattern in temp_file_patterns:
+                temp_file = temp_apps_dir / pattern
+                if temp_file.exists():
+                    temp_file.unlink()
+                    logger.info(f"Cleaned up temp file: {temp_file}")
+        except Exception as e:
+            logger.warning(f"Failed to clean up temp files for {app_id}: {e}")
+
+    async def _launch_in_process_app(self, app_id: str, app: BaseTextualApp) -> None:
+        """Launch app in-process for collaborative functionality.
+
+        This runs the app in the same process as the MCP server, allowing
+        direct method calls for screen capture, input sending, etc.
+        """
+        import asyncio
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Create a thread pool executor for running the app
+        if not hasattr(self, '_app_executor'):
+            self._app_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="textual_app")
+
+        def run_app_in_thread():
+            """Run the Textual app in a separate thread."""
+            try:
+                app._log_output(f"Starting app {app_id} in-process (thread mode)")
+                # Mark app as running
+                app._is_running = True
+                # Run the app (this will block until app exits)
+                app.run()
+                app._log_output(f"App {app_id} finished running")
+            except Exception as e:
+                app._log_output(f"Error running app {app_id}: {e}")
+                # Mark app status in case of error by updating the AppStatus
+                status = app.get_status()
+                status.error_message = str(e)
+                self.running_apps[app_id] = status
+            finally:
+                app._is_running = False
+
+        # Submit the app to run in thread pool
+        future = self._app_executor.submit(run_app_in_thread)
+
+        # Store the future so we can check status or cancel if needed
+        if not hasattr(self, '_app_futures'):
+            self._app_futures = {}
+        self._app_futures[app_id] = future
+
+        # Give the app a moment to start up
+        await asyncio.sleep(0.1)
+        app._log_output(f"In-process app {app_id} launched successfully")
 
     async def _launch_web_app(self, app_id: str, app_name: str, args: dict[str, Any], port: int = 8000) -> None:
         """Launch app in web mode using textual serve."""
@@ -186,12 +308,51 @@ if __name__ == "__main__":
         """Terminate a running application and clean up temp files."""
         cleanup_successful = True
 
-        # Terminate process
+        # Check if app exists in registry
+        if app_id not in self.running_apps:
+            logger.warning(f"App {app_id} not found in running_apps")
+            return False
+
+        # Terminate in-process app if exists
+        if hasattr(self, '_app_futures') and app_id in self._app_futures:
+            future = self._app_futures[app_id]
+            if not future.done():
+                # Try to exit the app gracefully first
+                if app_id in self.running_apps:
+                    app = self.running_apps[app_id]
+                    if isinstance(app, BaseTextualApp):
+                        try:
+                            app.exit()
+                            app._log_output(f"App {app_id} exit requested")
+                        except Exception as e:
+                            logger.warning(f"Failed to gracefully exit app {app_id}: {e}")
+
+                # Cancel the future if still running
+                future.cancel()
+
+            # Clean up future reference
+            del self._app_futures[app_id]
+
+        # Terminate subprocess if exists - handle dead processes gracefully
         if app_id in self.app_processes:
             process = self.app_processes[app_id]
-            process.terminate()
-            await process.wait()
-            del self.app_processes[app_id]
+            try:
+                # Check if process is still alive
+                if process.returncode is None:
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except TimeoutError:
+                        # Force kill if it doesn't terminate gracefully
+                        process.kill()
+                        await process.wait()
+                logger.info(f"Process for app {app_id} terminated successfully")
+            except Exception as e:
+                logger.warning(f"Error terminating process for app {app_id}: {e}")
+                cleanup_successful = False
+            finally:
+                # Always clean up the process reference
+                del self.app_processes[app_id]
 
         # Clean up temporary files
         try:
@@ -210,15 +371,25 @@ if __name__ == "__main__":
             logger.warning(f"Failed to clean up temp files for {app_id}: {e}")
             cleanup_successful = False
 
-        # Clean up app registry
+        # Clean up app registry - handle both BaseTextualApp and AppStatus objects
         if app_id in self.running_apps:
             app = self.running_apps[app_id]
             if isinstance(app, BaseTextualApp):
-                app.exit()
+                try:
+                    app.exit()
+                    logger.info(f"Gracefully exited BaseTextualApp {app_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to exit BaseTextualApp {app_id}: {e}")
+            elif isinstance(app, AppStatus):
+                logger.info(f"Removing AppStatus for {app_id}")
+
+            # Always remove from registry
             del self.running_apps[app_id]
             AppRegistry.remove_running_app(app_id)
+            logger.info(f"Successfully terminated and cleaned up app {app_id}")
             return cleanup_successful
 
+        logger.warning(f"App {app_id} was not found in running_apps during cleanup")
         return False
 
     def get_app_status(self, app_id: str) -> AppStatus | None:
@@ -361,6 +532,131 @@ if __name__ == "__main__":
             })
 
         return environments
+
+    async def terminate_all_apps(self) -> dict[str, Any]:
+        """Terminate all running applications and environments."""
+        terminated_apps = []
+        terminated_envs = []
+
+        # Terminate all running apps
+        for app_id in list(self.running_apps.keys()):
+            try:
+                success = await self.terminate_app(app_id)
+                terminated_apps.append({"app_id": app_id, "success": success})
+            except Exception as e:
+                terminated_apps.append({"app_id": app_id, "success": False, "error": str(e)})
+
+        # Terminate all environments
+        for env_id in list(self.multiplex_environments.keys()):
+            try:
+                success = await self.terminate_environment(env_id)
+                terminated_envs.append({"env_id": env_id, "success": success})
+            except Exception as e:
+                terminated_envs.append({"env_id": env_id, "success": False, "error": str(e)})
+
+        return {
+            "status": "success",
+            "terminated_apps": terminated_apps,
+            "terminated_environments": terminated_envs,
+            "total_apps": len(terminated_apps),
+            "total_envs": len(terminated_envs)
+        }
+
+    def get_all_running_processes(self) -> dict[str, Any]:
+        """Get detailed info about all running processes for debugging."""
+        running_info = {
+            "apps": [],
+            "environments": [],
+            "processes": []
+        }
+
+        # Get app info
+        for app_id, app_or_status in self.running_apps.items():
+            app_info = {
+                "app_id": app_id,
+                "type": type(app_or_status).__name__,
+                "has_process": app_id in self.app_processes
+            }
+            if isinstance(app_or_status, BaseTextualApp):
+                app_info.update({
+                    "name": app_or_status.APP_CONFIG.name,
+                    "process_id": app_or_status.process_id,
+                    "is_running": app_or_status._is_running,
+                    "start_time": app_or_status._creation_time
+                })
+            elif isinstance(app_or_status, AppStatus):
+                app_info.update({
+                    "name": app_or_status.name,
+                    "pid": app_or_status.pid,
+                    "status": app_or_status.status,
+                    "start_time": app_or_status.start_time
+                })
+            running_info["apps"].append(app_info)
+
+        # Get environment info
+        for env_id, env in self.multiplex_environments.items():
+            env_info = {
+                "env_id": env_id,
+                "template": env["template"],
+                "process_running": env["process"].returncode is None,
+                "started_at": env["started_at"]
+            }
+            running_info["environments"].append(env_info)
+
+        # Get process info
+        for app_id, process in self.app_processes.items():
+            process_info = {
+                "app_id": app_id,
+                "pid": process.pid,
+                "returncode": process.returncode
+            }
+            running_info["processes"].append(process_info)
+
+        return running_info
+
+    async def cleanup_dead_processes(self) -> dict[str, Any]:
+        """Clean up processes that are no longer running."""
+        cleaned_apps = []
+
+        # Check each app to see if its process is still alive
+        for app_id in list(self.running_apps.keys()):
+            app_or_status = self.running_apps[app_id]
+
+            # Check if it's an AppStatus with a PID
+            if isinstance(app_or_status, AppStatus) and app_or_status.pid:
+                try:
+                    # Check if process exists using os.kill with signal 0
+                    import os
+                    os.kill(app_or_status.pid, 0)
+                    # Process exists, continue
+                    continue
+                except (OSError, ProcessLookupError):
+                    # Process is dead, clean it up
+                    logger.info(f"Found dead process for app {app_id} (PID: {app_or_status.pid})")
+
+                    # Update status to stopped
+                    app_or_status.status = "stopped"
+                    app_or_status.pid = None
+
+                    # Clean up process reference if it exists
+                    self.app_processes.pop(app_id, None)
+
+                    # Clean up temp files
+                    await self._cleanup_temp_files(app_id)
+
+                    cleaned_apps.append({
+                        "app_id": app_id,
+                        "name": app_or_status.name,
+                        "was_pid": app_or_status.pid,
+                        "status": "cleaned_dead_process"
+                    })
+
+        return {
+            "status": "success",
+            "cleaned_apps": cleaned_apps,
+            "count": len(cleaned_apps),
+            "timestamp": datetime.now().isoformat()
+        }
 
 
 # Initialize MCP server and app manager
@@ -541,8 +837,15 @@ async def capture_app_screen(app_id: str) -> dict[str, Any]:
         }
 
     try:
-        # Get app screen state - only supported on BaseTextualApp subclasses
+        # Ensure app is BaseTextualApp instance with screen capture capability
         if isinstance(app, BaseTextualApp) and hasattr(app, 'get_screen_state'):
+            # Check if app is running in-process (required for collaborative features)
+            if not (hasattr(app_manager, '_app_futures') and app_id in app_manager._app_futures):
+                return {
+                    "status": "error",
+                    "error": f"Application {app_id} must be running in-process for screen capture. Please launch with in_process=True or use open_collaborative_session."
+                }
+
             screen_data = await app.get_screen_state()
             return {
                 "status": "success",
@@ -583,6 +886,13 @@ async def send_input_to_app(app_id: str, input_type: str, input_data: str) -> di
 
     try:
         if isinstance(app, BaseTextualApp) and hasattr(app, 'receive_input'):
+            # Check if app is running in-process (required for collaborative features)
+            if not (hasattr(app_manager, '_app_futures') and app_id in app_manager._app_futures):
+                return {
+                    "status": "error",
+                    "error": f"Application {app_id} must be running in-process for input sending. Please launch with in_process=True or use open_collaborative_session."
+                }
+
             result = await app.receive_input(input_type, input_data)
             return {
                 "status": "success",
@@ -981,15 +1291,33 @@ async def open_collaborative_session(app_name: str, mode: str = "terminal") -> d
         results = {}
 
         if mode in ["terminal", "both"]:
-            # Launch in visible terminal
-            terminal_result = await launch_app_in_terminal(app_name)
-            results["terminal"] = terminal_result
+            # Launch in-process for collaborative functionality
+            app_id = await app_manager.launch_app(app_name, in_process=True)
+            results["terminal"] = {
+                "status": "success",
+                "app_id": app_id,
+                "session_id": session_id,
+                "message": f"Collaborative session ready! App {app_name} is running in-process for full interactivity.",
+                "collaborative_features": [
+                    "Screen capture (capture_app_screen)",
+                    "Input sending (send_input_to_app)",
+                    "State monitoring (get_app_state)",
+                    "Real-time interaction"
+                ]
+            }
 
         if mode in ["web", "both"]:
-            # Launch in web browser
-            port = 8000 + hash(session_id) % 1000  # Generate unique port
-            web_result = await launch_app_in_web_browser(app_name, port=port)
-            results["web"] = web_result
+            # Launch in web mode (note: limited collaborative features in web mode)
+            port = 8000 + hash(session_id) % 1000
+            app_id = await app_manager.launch_app(app_name, web_mode=True, port=port)
+            results["web"] = {
+                "status": "success",
+                "app_id": app_id,
+                "url": f"http://localhost:{port}",
+                "session_id": session_id,
+                "message": f"Web session launched at http://localhost:{port}",
+                "note": "Web mode has limited collaborative features. Use terminal mode for full functionality."
+            }
 
         return {
             "status": "success",
@@ -1260,6 +1588,62 @@ async def terminate_environment(env_id: str) -> dict[str, Any]:
             "status": "error",
             "error": f"Environment {env_id} not found",
             "env_id": env_id
+        }
+
+
+@mcp.tool()
+async def terminate_all_apps() -> dict[str, Any]:
+    """Terminate all running applications and environments.
+
+    Returns:
+        Summary of termination results for all apps and environments.
+    """
+    try:
+        result = await app_manager.terminate_all_apps()
+        return result
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to terminate all apps: {e}",
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+@mcp.tool()
+def get_all_running_processes() -> dict[str, Any]:
+    """Get detailed information about all running processes for debugging.
+
+    Returns:
+        Comprehensive information about apps, environments, and processes.
+    """
+    try:
+        process_info = app_manager.get_all_running_processes()
+        process_info["status"] = "success"
+        process_info["timestamp"] = datetime.now().isoformat()
+        return process_info
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to get process info: {e}",
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+@mcp.tool()
+async def cleanup_dead_processes() -> dict[str, Any]:
+    """Clean up apps with dead processes that are still tracked as running.
+
+    Returns:
+        Summary of cleaned up dead processes.
+    """
+    try:
+        result = await app_manager.cleanup_dead_processes()
+        return result
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to cleanup dead processes: {e}",
+            "timestamp": datetime.now().isoformat()
         }
 
 
