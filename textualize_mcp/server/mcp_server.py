@@ -8,7 +8,6 @@ import atexit
 import json
 import logging
 import signal
-import subprocess
 import sys
 import uuid
 from datetime import datetime
@@ -19,9 +18,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
 # Import apps module to trigger registration decorators
-from textualize_mcp import apps
-
-# Import all apps to ensure registration
+from textualize_mcp import apps  # noqa: F401  # Required for app auto-registration
 from textualize_mcp.core.base import AppRegistry, AppStatus, BaseTextualApp
 
 # Configure logging to stderr for MCP servers
@@ -53,17 +50,17 @@ class AppManager:
         """Load predefined multiplex environment templates."""
         return {
             "textual_dev": [
-                "APP#green=textual serve {app_name}.py --port {port}",
+                "APP#green=textual serve textualize_mcp.apps.{app_name}:{app_name}App --port {port}",
                 "CONSOLE#blue+1=textual console",
-                "DEV+2=textual run --dev {app_name}.py",
+                "DEV+2=textual run --dev textualize_mcp.apps.{app_name}:{app_name}App",
                 "BROWSER+3=xdg-open http://localhost:{port}"
             ],
             "full_stack": [
                 "DB#blue|silent=mongod --quiet --dbpath /tmp/textual_db",
                 "REDIS#red|silent=redis-server --port 6380",
-                "API#green+2=textual serve api_tester.py --port 8001",
-                "MONITOR#yellow+API=textual serve process_monitor.py --port 8002",
-                "FILE_BROWSER#cyan+API=textual serve file_browser.py --port 8003",
+                "API#green+2=textual serve textualize_mcp.apps.api_tester:APITesterApp --port 8001",
+                "MONITOR#yellow+API=textual serve textualize_mcp.apps.process_monitor:ProcessMonitorApp --port 8002",
+                "FILE_BROWSER#cyan+API=textual serve textualize_mcp.apps.file_browser:FileBrowserApp --port 8003",
                 "DASHBOARD+5=xdg-open http://localhost:8001"
             ],
             "testing_pipeline": [
@@ -74,9 +71,9 @@ class AppManager:
                 "CLEANUP+COVERAGE|end=echo 'Testing pipeline completed successfully'"
             ],
             "development_stack": [
-                "API#green=textual serve api_tester.py --port 8001",
-                "FILE_MGR#cyan+1=textual serve file_browser.py --port 8002",
-                "PROC_MON#yellow+1=textual serve process_monitor.py --port 8003",
+                "API#green=textual serve textualize_mcp.apps.api_tester:APITesterApp --port 8001",
+                "FILE_MGR#cyan+1=textual serve textualize_mcp.apps.file_browser:FileBrowserApp --port 8002",
+                "PROC_MON#yellow+1=textual serve textualize_mcp.apps.process_monitor:ProcessMonitorApp --port 8003",
                 "GATEWAY+3=echo 'All services running - API:8001 Files:8002 Monitor:8003'"
             ]
         }
@@ -231,7 +228,6 @@ if __name__ == "__main__":
         direct method calls for screen capture, input sending, etc.
         """
         import asyncio
-        import threading
         from concurrent.futures import ThreadPoolExecutor
 
         # Create a thread pool executor for running the app
@@ -671,9 +667,9 @@ def list_apps() -> list[dict[str, Any]]:
     Returns:
         List of application configurations with metadata.
     """
-    apps = []
+    app_configs = []
     for config in AppRegistry.list_apps():
-        apps.append({
+        app_configs.append({
             "name": config.name,
             "description": config.description,
             "version": config.version,
@@ -681,42 +677,143 @@ def list_apps() -> list[dict[str, Any]]:
             "requires_web": config.requires_web,
             "requires_sudo": config.requires_sudo
         })
-    return apps
+    return app_configs
 
 
 @mcp.tool()
-async def launch_app(app_name: str, args: str | None = None, web_mode: bool = False) -> dict[str, Any]:
-    """Launch a Textual application.
+async def launch_app(
+    app_name: str,
+    args: str | None = None,
+    launch_mode: str = "background",
+    port: int = 8000,
+    terminal_type: str = "gnome-terminal"
+) -> dict[str, Any]:
+    """Launch a Textual application with comprehensive launch mode support.
 
     Args:
         app_name: Name of the application to launch
         args: JSON string of arguments to pass to the application
-        web_mode: Whether to launch in web browser mode
+        launch_mode: Launch mode - 'background', 'web', 'terminal', 'collaborative'
+        port: Port number for web mode
+        terminal_type: Terminal type for terminal mode ('gnome-terminal', 'xterm', 'konsole', 'alacritty')
 
     Returns:
-        Application launch result with app_id.
+        Application launch result with app_id and mode-specific details.
     """
     try:
-
         parsed_args = {}
         if args:
             parsed_args = json.loads(args)
 
-        app_id = await app_manager.launch_app(app_name, parsed_args, web_mode)
+        # Determine launch parameters based on mode
+        web_mode = launch_mode == "web"
+        in_process = launch_mode == "collaborative"
 
-        return {
-            "status": "success",
-            "app_id": app_id,
-            "app_name": app_name,
-            "web_mode": web_mode,
-            "launched_at": datetime.now().isoformat()
-        }
+        # Launch the app using the unified AppManager method
+        if launch_mode == "terminal":
+            # For terminal mode, use the terminal-specific implementation
+            app_id = app_manager.generate_app_id()
+
+            # Create app status for tracking
+            app_status = AppStatus(
+                app_id=app_id,
+                name=app_name,
+                pid=None,
+                status="starting",
+                start_time=datetime.now().isoformat(),
+                error_message=None
+            )
+
+            # Build terminal command
+            app_module = f"textualize_mcp.apps.{app_name}"
+            base_dir = Path(__file__).parent.parent.parent
+
+            terminal_commands = {
+                "gnome-terminal": [
+                    "gnome-terminal", "--", "bash", "-c",
+                    f"cd {base_dir} && uv run python -m {app_module}; read -p 'Press Enter to close...'"
+                ],
+                "xterm": [
+                    "xterm", "-e", "bash", "-c",
+                    f"cd {base_dir} && uv run python -m {app_module}; read -p 'Press Enter to close...'"
+                ],
+                "konsole": [
+                    "konsole", "-e", "bash", "-c",
+                    f"cd {base_dir} && uv run python -m {app_module}; read -p 'Press Enter to close...'"
+                ],
+                "alacritty": [
+                    "alacritty", "-e", "bash", "-c",
+                    f"cd {base_dir} && uv run python -m {app_module}; read -p 'Press Enter to close...'"
+                ]
+            }
+
+            if terminal_type not in terminal_commands:
+                terminal_type = "gnome-terminal"
+
+            cmd = terminal_commands[terminal_type]
+
+            # Launch terminal process
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            # Update status and store references
+            app_status.pid = process.pid
+            app_status.status = "running"
+            app_manager.running_apps[app_id] = app_status
+            app_manager.app_processes[app_id] = process
+
+            return {
+                "status": "success",
+                "app_id": app_id,
+                "app_name": app_name,
+                "launch_mode": launch_mode,
+                "terminal_type": terminal_type,
+                "process_id": process.pid,
+                "message": f"Launched {app_name} in visible {terminal_type} window",
+                "launched_at": datetime.now().isoformat()
+            }
+        else:
+            # Use standard AppManager launch for other modes
+            app_id = await app_manager.launch_app(app_name, parsed_args, web_mode, in_process, port)
+
+            result: dict[str, Any] = {
+                "status": "success",
+                "app_id": app_id,
+                "app_name": app_name,
+                "launch_mode": launch_mode,
+                "launched_at": datetime.now().isoformat()
+            }
+
+            # Add mode-specific details
+            if launch_mode == "web":
+                result.update({
+                    "web_url": f"http://localhost:{port}",
+                    "port": port,
+                    "message": f"Launched {app_name} in web browser at http://localhost:{port}",
+                    "instructions": f"Open http://localhost:{port} in your browser to interact with the app"
+                })
+            elif launch_mode == "collaborative":
+                result["message"] = f"Launched {app_name} in collaborative mode with full interactive features"
+                result["collaborative_features"] = [
+                    "Screen capture (capture_app_screen)",
+                    "Input sending (send_input_to_app)",
+                    "State monitoring (get_app_state)",
+                    "Real-time interaction"
+                ]
+            else:  # background mode
+                result["message"] = f"Launched {app_name} in background mode"
+
+            return result
 
     except Exception as e:
         return {
             "status": "error",
             "error": str(e),
-            "app_name": app_name
+            "app_name": app_name,
+            "launch_mode": launch_mode
         }
 
 
@@ -1053,156 +1150,12 @@ async def read_app_output(app_id: str, lines: int = 50) -> dict[str, Any]:
         }
 
 
-@mcp.tool()
-async def launch_app_in_terminal(app_name: str, args: str | None = None, terminal_type: str = "gnome-terminal") -> dict[str, Any]:
-    """Launch a Textual application in a visible terminal window for user collaboration.
-
-    Args:
-        app_name: Name of the application to launch
-        args: JSON string of arguments to pass to the application
-        terminal_type: Type of terminal ('gnome-terminal', 'xterm', 'konsole', 'alacritty')
-
-    Returns:
-        Application launch result with terminal info.
-    """
-    app_id = None
-    try:
-        # Parse arguments if provided
-        parsed_args = {}
-        if args:
-            parsed_args = json.loads(args)
-
-        # Generate app ID for tracking
-        app_id = app_manager.generate_app_id()
-
-        # Create a minimal app status tracker (not a full instance)
-        app_status = AppStatus(
-            app_id=app_id,
-            name=app_name,
-            pid=None,  # Will be set after process creation
-            status="starting",
-            start_time=datetime.now().isoformat(),
-            error_message=None
-        )
-
-        # Build command to run the app in terminal
-        app_module = f"textualize_mcp.apps.{app_name}"
-        base_dir = Path(__file__).parent.parent.parent  # Dynamic project root
-
-        # Terminal command variants
-        terminal_commands = {
-            "gnome-terminal": [
-                "gnome-terminal", "--", "bash", "-c",
-                f"cd {base_dir} && uv run python -m {app_module}; read -p 'Press Enter to close...'"
-            ],
-            "xterm": [
-                "xterm", "-e", "bash", "-c",
-                f"cd {base_dir} && uv run python -m {app_module}; read -p 'Press Enter to close...'"
-            ],
-            "konsole": [
-                "konsole", "-e", "bash", "-c",
-                f"cd {base_dir} && uv run python -m {app_module}; read -p 'Press Enter to close...'"
-            ],
-            "alacritty": [
-                "alacritty", "-e", "bash", "-c",
-                f"cd {base_dir} && uv run python -m {app_module}; read -p 'Press Enter to close...'"
-            ]
-        }
-
-        if terminal_type not in terminal_commands:
-            terminal_type = "gnome-terminal"  # fallback
-
-        cmd = terminal_commands[terminal_type]
-
-        # Launch the terminal with the app
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-
-        # Update status with process info
-        app_status.pid = process.pid
-        app_status.status = "running"
-
-        # Store the status for tracking and the process
-        app_manager.running_apps[app_id] = app_status
-        app_manager.app_processes[app_id] = process
-
-        logger.info(f"Successfully launched {app_name} with app_id {app_id} and pid {process.pid}")
-
-        return {
-            "status": "success",
-            "app_id": app_id,
-            "app_name": app_name,
-            "terminal_type": terminal_type,
-            "process_id": process.pid,
-            "message": f"Launched {app_name} in visible {terminal_type} window",
-            "collaboration_mode": "visible_terminal",
-            "launched_at": datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        # Cleanup on failure
-        if app_id and app_id in app_manager.running_apps:
-            app_manager.running_apps.pop(app_id, None)
-
-        logger.error(f"Failed to launch {app_name}: {e}")
-
-        return {
-            "status": "error",
-            "error": str(e),
-            "app_name": app_name,
-            "terminal_type": terminal_type
-        }
+# REMOVED: launch_app_in_terminal - functionality now integrated into main launch_app method
+# Use launch_app(app_name, launch_mode="terminal", terminal_type="gnome-terminal") instead
 
 
-@mcp.tool()
-async def launch_app_in_web_browser(app_name: str, args: str | None = None, port: int = 8000) -> dict[str, Any]:
-    """Launch a Textual application in web browser for shared viewing and interaction.
-
-    Args:
-        app_name: Name of the application to launch
-        args: JSON string of arguments to pass to the application
-        port: Port number for the web server
-
-    Returns:
-        Application launch result with web URL.
-    """
-    try:
-        # Parse arguments if provided
-        parsed_args = {}
-        if args:
-            parsed_args = json.loads(args)
-
-        # Use the existing launch_app with web_mode=True and custom port
-        app_id = await app_manager.launch_app(app_name, parsed_args, web_mode=True, port=port)
-
-        # Wait a moment for server to start
-        await asyncio.sleep(2)
-
-        web_url = f"http://localhost:{port}"
-
-        return {
-            "status": "success",
-            "app_id": app_id,
-            "app_name": app_name,
-            "web_url": web_url,
-            "port": port,
-            "process_id": app_manager.app_processes[app_id].pid if app_id in app_manager.app_processes else None,
-            "message": f"Launched {app_name} in web browser at {web_url}",
-            "collaboration_mode": "web_browser",
-            "instructions": f"Open {web_url} in your browser to see and interact with the app",
-            "launched_at": datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e),
-            "app_name": app_name,
-            "port": port
-        }
+# REMOVED: launch_app_in_web_browser - functionality now integrated into main launch_app method
+# Use launch_app(app_name, launch_mode="web", port=8000) instead
 
 
 @mcp.tool()
@@ -1273,75 +1226,8 @@ async def capture_terminal_output(app_id: str, lines: int = 50) -> dict[str, Any
         }
 
 
-@mcp.tool()
-async def open_collaborative_session(app_name: str, mode: str = "terminal") -> dict[str, Any]:
-    """Open a collaborative session where both AI and user can see and interact with the app.
-
-    Args:
-        app_name: Name of the application to launch
-        mode: Collaboration mode ('terminal', 'web', 'both')
-
-    Returns:
-        Collaborative session details and access information
-    """
-    session_id = None
-    try:
-        session_id = f"collab_{uuid.uuid4().hex[:8]}"
-
-        results = {}
-
-        if mode in ["terminal", "both"]:
-            # Launch in-process for collaborative functionality
-            app_id = await app_manager.launch_app(app_name, in_process=True)
-            results["terminal"] = {
-                "status": "success",
-                "app_id": app_id,
-                "session_id": session_id,
-                "message": f"Collaborative session ready! App {app_name} is running in-process for full interactivity.",
-                "collaborative_features": [
-                    "Screen capture (capture_app_screen)",
-                    "Input sending (send_input_to_app)",
-                    "State monitoring (get_app_state)",
-                    "Real-time interaction"
-                ]
-            }
-
-        if mode in ["web", "both"]:
-            # Launch in web mode (note: limited collaborative features in web mode)
-            port = 8000 + hash(session_id) % 1000
-            app_id = await app_manager.launch_app(app_name, web_mode=True, port=port)
-            results["web"] = {
-                "status": "success",
-                "app_id": app_id,
-                "url": f"http://localhost:{port}",
-                "session_id": session_id,
-                "message": f"Web session launched at http://localhost:{port}",
-                "note": "Web mode has limited collaborative features. Use terminal mode for full functionality."
-            }
-
-        return {
-            "status": "success",
-            "session_id": session_id,
-            "app_name": app_name,
-            "collaboration_mode": mode,
-            "access_methods": results,
-            "message": f"Collaborative session started! Both AI and user can now interact with {app_name}",
-            "instructions": {
-                "terminal": "App is running in a visible terminal window",
-                "web": f"Open {results.get('web', {}).get('web_url', 'N/A')} in your browser" if "web" in results else None,
-                "ai_control": "AI can send commands and keystrokes to control the app",
-                "user_control": "User can interact directly with the terminal/web interface"
-            },
-            "created_at": datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": f"Failed to create collaborative session: {e}",
-            "session_id": session_id,
-            "app_name": app_name
-        }
+# REMOVED: open_collaborative_session - functionality now integrated into main launch_app method
+# Use launch_app(app_name, launch_mode="collaborative") instead
     """Get information about the MCP server.
 
     Returns:

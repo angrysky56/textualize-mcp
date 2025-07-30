@@ -15,33 +15,39 @@ A Model Context Protocol (MCP) server that provides a library of useful Textual 
 
 ## Available Textualize MCP Tools
 
-### 🎯 Individual App Management
-- **list_apps()** - List all available Textual applications
-- **launch_app()** - Launch applications in terminal or web mode
-- **get_app_info()** - Get detailed application information
-- **terminate_app()** - Terminate running applications
-- **get_app_status()** - Get application status
-- **list_running_apps()** - List all running applications
+### 🎯 Core App Management
+- **list_apps()** - List all available Textual applications with metadata
+- **launch_app()** - **UNIFIED** launch method with comprehensive mode support:
+  - `launch_mode="background"` - Standard background execution  
+  - `launch_mode="web"` - Web browser deployment with custom port
+  - `launch_mode="terminal"` - Visible terminal window (VS Code context)
+  - `launch_mode="collaborative"` - Full AI-app interaction features
+- **get_app_info()** - Get detailed application information and capabilities
+- **terminate_app()** - Terminate specific running applications
+- **get_app_status()** - Get current application status and process info
+- **list_running_apps()** - List all currently running applications
 
-### 🏗️ Environment Orchestration (Multiplex Integration)
-- **list_environment_templates()** - List predefined development environment templates
-- **launch_development_environment()** - Launch coordinated multi-service environments
-- **create_custom_workflow()** - Create custom workflows with process dependencies
-- **get_environment_status()** - Get comprehensive environment status
-- **terminate_environment()** - Gracefully shutdown entire environments
-- **list_active_environments()** - List all running environments
-
-### 🤝 Interactive Features
-- **launch_app_in_terminal()** - Launch apps in visible terminal windows
-- **launch_app_in_web_browser()** - Launch apps in web browser for shared viewing
-- **capture_terminal_output()** - Capture actual terminal content and visual output
-- **open_collaborative_session()** - One-command collaborative setup (terminal + web)
+### 🤝 Interactive & Collaborative Features  
 - **capture_app_screen()** - Get real-time visual state and layout of running apps
 - **send_input_to_app()** - Send keystrokes, text, commands, or actions to apps
 - **get_app_state()** - Get detailed UI state, data, and context information
 - **create_interactive_session()** - Start shared real-time collaboration sessions
 - **read_app_output()** - Read recent output and logs from applications
-- **debug_running_apps()** - Debug tool for troubleshooting
+- **capture_terminal_output()** - Capture actual terminal content and visual output
+
+### 🏗️ Environment Orchestration (Multiplex Integration)
+- **list_environment_templates()** - List predefined development environment templates
+- **launch_development_environment()** - Launch coordinated multi-service environments
+- **create_custom_workflow()** - Create custom workflows with process dependencies  
+- **get_environment_status()** - Get comprehensive environment status and process info
+- **terminate_environment()** - Gracefully shutdown entire environments
+- **list_active_environments()** - List all running environments with details
+
+### 🔧 System Management & Debugging
+- **debug_running_apps()** - Debug tool for troubleshooting app tracking issues
+- **terminate_all_apps()** - Emergency shutdown of all running apps and environments
+- **get_all_running_processes()** - Get detailed info about all processes for debugging
+- **cleanup_dead_processes()** - Clean up orphaned process references
 
 ## 🎪 What This Enables
 
@@ -105,14 +111,22 @@ Perfect for developing a single Textual application with live reload and debuggi
 
 **What it includes:**
 - APP#green: Textual serve with specified app and port
-- CONSOLE#blue: Development console for debugging
+- CONSOLE#blue: Development console for debugging  
 - DEV: Live reload development mode
 - BROWSER: Automatic browser opening
+
+**Template Commands:**
+```bash
+APP#green=textual serve textualize_mcp.apps.{app_name}:{app_name}App --port {port}
+CONSOLE#blue+1=textual console
+DEV+2=textual run --dev textualize_mcp.apps.{app_name}:{app_name}App
+BROWSER+3=xdg-open http://localhost:{port}
+```
 
 **Usage:**
 ```python
 # Launch with customizations
-await launch_development_environment("textual_dev", '{"app_name": "file_browser", "port": "8000"}')
+await launch_development_environment("textual_dev", '{"app_name": "calculator", "port": "8000"}')
 ```
 
 ### 2. `full_stack` - Complete Development Stack
@@ -120,16 +134,20 @@ For complex applications requiring databases, multiple services, and monitoring.
 
 **What it includes:**
 - DB#blue: MongoDB with quiet logging (background)
-- REDIS#red: Redis server on custom port (background)
+- REDIS#red: Redis server on custom port (background)  
 - API#green: API tester service on port 8001
 - MONITOR#yellow: Process monitor on port 8002
 - FILE_BROWSER#cyan: File browser on port 8003
 - DASHBOARD: Opens browser to main service
 
-**Usage:**
-```python
-# Launch full development stack
-await launch_development_environment("full_stack")
+**Template Commands:**
+```bash
+DB#blue|silent=mongod --quiet --dbpath /tmp/textual_db
+REDIS#red|silent=redis-server --port 6380
+API#green+2=textual serve textualize_mcp.apps.api_tester:APITesterApp --port 8001
+MONITOR#yellow+API=textual serve textualize_mcp.apps.process_monitor:ProcessMonitorApp --port 8002
+FILE_BROWSER#cyan+API=textual serve textualize_mcp.apps.file_browser:FileBrowserApp --port 8003
+DASHBOARD+5=xdg-open http://localhost:8001
 ```
 
 ### 3. `testing_pipeline` - Automated Testing Workflow
@@ -138,14 +156,17 @@ Comprehensive testing pipeline with proper dependency sequencing.
 **What it includes:**
 - LINT#yellow: Code linting with ruff
 - TYPE#blue: Type checking with mypy (waits for lint)
-- TEST#green: Test execution with pytest (waits for type check)
+- TEST#green: Test execution with pytest (waits for type check)  
 - COVERAGE: Coverage report generation (waits for tests)
 - CLEANUP: Success notification and cleanup (auto-terminates)
 
-**Usage:**
-```python
-# Run complete testing pipeline
-await launch_development_environment("testing_pipeline")
+**Template Commands:**
+```bash
+LINT#yellow=ruff check textualize_mcp/
+TYPE#blue+LINT=mypy textualize_mcp/
+TEST#green+TYPE=pytest tests/ -v
+COVERAGE+TEST=coverage report --show-missing
+CLEANUP+COVERAGE|end=echo 'Testing pipeline completed successfully'
 ```
 
 ### 4. `development_stack` - Multi-Service Coordination
@@ -154,52 +175,82 @@ Coordinate multiple Textual services for complex application development.
 **What it includes:**
 - API#green: API tester service on port 8001
 - FILE_MGR#cyan: File browser on port 8002
-- PROC_MON#yellow: Process monitor on port 8003
+- PROC_MON#yellow: Process monitor on port 8003  
 - GATEWAY: Status message when all services are ready
 
-**Usage:**
-```python
-# Launch coordinated multi-service environment
-await launch_development_environment("development_stack")
+**Template Commands:**
+```bash
+API#green=textual serve textualize_mcp.apps.api_tester:APITesterApp --port 8001
+FILE_MGR#cyan+1=textual serve textualize_mcp.apps.file_browser:FileBrowserApp --port 8002
+PROC_MON#yellow+1=textual serve textualize_mcp.apps.process_monitor:ProcessMonitorApp --port 8003
+GATEWAY+3=echo 'All services running - API:8001 Files:8002 Monitor:8003'
 ```
 
 ## 🎯 Real-World Usage Examples
 
-### Example 1: Testing Pipeline
+### Example 1: Web Browser Collaboration
 ```python
-# AI automatically runs complete test suite
-await launch_development_environment("testing_pipeline")
-
-# Check status
-status = await get_environment_status("env_12345678")
-# Shows: LINT → TYPE → TEST → COVERAGE → CLEANUP sequence
+# Launch calculator in web browser for shared collaboration
+await launch_app("calculator", launch_mode="web", port=8000)
+# → Calculator available at http://localhost:8000
+# → Both AI and user can interact with same interface
 ```
 
-### Example 2: Custom Workflow
+### Example 2: Multi-Service Development Environment  
 ```python
-# Create custom deployment pipeline
+# Launch coordinated development stack
+env_id = await launch_development_environment("development_stack")
+# → API tester on port 8001
+# → File browser on port 8002  
+# → Process monitor on port 8003
+# → Color-coded coordination with timing dependencies
+
+# Check environment status
+status = await get_environment_status(env_id)
+# → Shows process coordination and service health
+
+# Graceful shutdown when complete
+await terminate_environment(env_id)
+```
+
+### Example 3: Testing Pipeline Automation
+```python
+# Run complete automated testing workflow
+await launch_development_environment("testing_pipeline")
+# → LINT#yellow → TYPE#blue → TEST#green → COVERAGE → CLEANUP
+# → Each step waits for previous completion
+# → Automatic reporting and cleanup
+```
+
+### Example 4: Custom Workflow Creation
+```python
+# Create custom workflow with process dependencies
 workflow = [
     "BUILD#yellow=npm run build",
-    "TEST#green+BUILD=pytest tests/ -v",
+    "TEST#green+BUILD=pytest tests/ -v", 
     "DOCKER#blue+TEST=docker build -t app .",
     "DEPLOY#red+DOCKER=kubectl apply -f deployment.yaml",
     "NOTIFY+DEPLOY|end=echo '🚀 Deployment complete!'"
 ]
 
 await create_custom_workflow(json.dumps(workflow), timeout=300)
+# → Custom deployment pipeline with color-coded stages
+# → Built-in dependency management and timeout handling
 ```
 
-### Example 3: Development Environment
+### Example 5: Interactive App Control
 ```python
-# Launch full development stack
-env_id = await launch_development_environment("full_stack")
+# Launch app in collaborative mode for AI interaction
+app_id = await launch_app("api_tester", launch_mode="collaborative")
 
-# Monitor all services
-environments = await list_active_environments()
-# Shows all running services with status and ports
+# Capture current screen state
+screen_data = await capture_app_screen(app_id)
 
-# Graceful shutdown when done
-await terminate_environment(env_id)
+# Send input to the running app
+await send_input_to_app(app_id, "key", "Enter")
+
+# Get detailed app state
+state = await get_app_state(app_id) 
 ```
 
 🎪 What This Enables:
@@ -255,6 +306,32 @@ AI: "Let's open a collaborative session with the API tester"
 → AI can control while you watch or vice versa
 
 
+### 📊 Unified Launch Method
+
+The `launch_app()` method is the **single, consolidated** way to launch applications in any mode:
+
+```python
+# Basic syntax
+await launch_app(
+    app_name: str,           # Required: "calculator", "file_browser", "api_tester", "process_monitor"
+    args: str = None,        # Optional: JSON string of arguments  
+    launch_mode: str = "background",  # Mode: "background", "web", "terminal", "collaborative"
+    port: int = 8000,        # Port for web mode
+    terminal_type: str = "gnome-terminal"  # Terminal type for terminal mode
+)
+
+# Launch modes explained:
+# "background"     → Standard execution (default)
+# "web"           → Browser deployment at http://localhost:PORT
+# "terminal"      → Visible terminal window (VS Code context only)  
+# "collaborative" → Full AI-app interaction features
+```
+
+**Previous redundant methods removed for architectural clarity:**
+- ~~`launch_app_in_terminal()`~~ → Use `launch_mode="terminal"`
+- ~~`launch_app_in_web_browser()`~~ → Use `launch_mode="web"`  
+- ~~`open_collaborative_session()`~~ → Use `launch_mode="collaborative"`
+
 You can say:
 
 "Launch the file browser in a terminal window so I can see it"
@@ -270,19 +347,31 @@ You can say:
 
 ## Applications Library
 
-### System & File Management
-- **File Browser Pro**: Advanced dual-pane file manager with preview
-- **Process Monitor**: Real-time system monitoring with kill capabilities
-- **API Tester**: REST API testing with request/response handling
+### 📊 Current Available Applications
 
-### Development Tools
-- **Git Manager**: Visual git operations and repository browser (coming soon)
-- **Code Browser**: Syntax-highlighted file explorer (coming soon)
+#### **Calculator** (v1.1.0)
+- **Description**: Calculator with basic arithmetic and scientific functions
+- **Tags**: calculator, math, utility, scientific
+- **Features**: Standard mathematical operations, scientific functions
+- **Launch**: `launch_app("calculator", launch_mode="web", port=8000)`
 
-### Productivity
-- **Task Manager**: Personal productivity and project tracking (coming soon)
-- **Markdown Editor**: Split-pane editor with live preview (coming soon)
-- **Network Monitor**: Connection and bandwidth monitoring (coming soon)
+#### **File Browser** (v1.0.0)  
+- **Description**: Advanced dual-pane file manager with syntax highlighting and file preview
+- **Tags**: file-management, preview, utility
+- **Features**: Dual-pane interface, syntax highlighting, file preview capabilities
+- **Launch**: `launch_app("file_browser", launch_mode="web", port=8001)`
+
+#### **Process Monitor** (v1.0.0)
+- **Description**: Real-time system and process monitoring with management capabilities
+- **Tags**: system, monitoring, processes, performance  
+- **Features**: Real-time monitoring, process management, performance metrics
+- **Launch**: `launch_app("process_monitor", launch_mode="web", port=8002)`
+
+#### **API Tester** (v1.0.0)
+- **Description**: REST API testing tool with request builder and response viewer
+- **Tags**: api, testing, development, http
+- **Features**: Request building, response viewing, HTTP testing capabilities
+- **Launch**: `launch_app("api_tester", launch_mode="web", port=8003)`
 
 ## Installation
 
